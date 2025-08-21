@@ -1,0 +1,79 @@
+import streamlit as st
+import pandas as pd
+from datetime import date
+from backend import (
+    create_transaction,
+    get_transactions,
+    update_transaction,
+    delete_transaction,
+    get_aggregates
+)
+
+st.set_page_config(page_title="Finance Tracker", layout="wide")
+st.title("💰 Finance: Revenue & Expense Tracker")
+
+# ---------------- Sidebar: Add Transaction ----------------
+st.sidebar.header("Add New Transaction")
+with st.sidebar.form("add_form", clear_on_submit=True):
+    t_date = st.date_input("Date", date.today())
+    desc = st.text_input("Description")
+    amt = st.number_input("Amount", min_value=0.01, format="%.2f")
+    t_type = st.selectbox("Type", ["Revenue", "Expense"])
+    submit_btn = st.form_submit_button("Add Transaction")
+    if submit_btn:
+        create_transaction(t_date, desc, amt, t_type)
+        st.success("Transaction added!")
+        st.rerun()
+
+# ---------------- Business Insights ----------------
+st.header("📊 Business Insights")
+total_transactions, total_revenue, total_expenses, net_income = get_aggregates()
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total Transactions", total_transactions)
+col2.metric("Total Revenue", f"${total_revenue:,.2f}")
+col3.metric("Total Expenses", f"${total_expenses:,.2f}")
+col4.metric("Net Income", f"${net_income:,.2f}")
+
+st.markdown("---")
+
+# ---------------- Filtering & Sorting ----------------
+st.subheader("📝 All Transactions")
+filter_type = st.selectbox("Filter by Type", ["All", "Revenue", "Expense"])
+sort_by = st.selectbox("Sort By", ["transaction_date", "amount"])
+sort_order = st.selectbox("Sort Order", ["Ascending", "Descending"])
+
+df = get_transactions(
+    transaction_type=filter_type,
+    sort_by=sort_by,
+    sort_order="ASC" if sort_order == "Ascending" else "DESC"
+)
+
+if not df.empty:
+    st.dataframe(df, use_container_width=True)
+
+    # ---------------- Update / Delete Section ----------------
+    st.subheader("Update or Delete Transaction")
+    selected_id = st.selectbox("Select Transaction ID", df["transaction_id"])
+
+    if selected_id:
+        selected_row = df[df["transaction_id"] == selected_id].iloc[0]
+        with st.form("update_delete_form"):
+            u_date = st.date_input("Date", selected_row["transaction_date"])
+            u_desc = st.text_input("Description", selected_row["description"])
+            u_amt = st.number_input("Amount", value=float(selected_row["amount"]), min_value=0.01, format="%.2f")
+            u_type = st.selectbox("Type", ["Revenue", "Expense"], index=["Revenue", "Expense"].index(selected_row["type"]))
+
+            col_u1, col_u2 = st.columns(2)
+            with col_u1:
+                if st.form_submit_button("Update Transaction"):
+                    update_transaction(selected_id, u_date, u_desc, u_amt, u_type)
+                    st.success("Transaction updated!")
+                    st.rerun()
+            with col_u2:
+                if st.form_submit_button("Delete Transaction"):
+                    delete_transaction(selected_id)
+                    st.warning("Transaction deleted!")
+                    st.rerun()
+else:
+    st.info("No transactions found.")
