@@ -1,0 +1,77 @@
+import psycopg2
+import pandas as pd
+from uuid import uuid4
+
+# ---------------- Database Connection ----------------
+def get_connection():
+    return psycopg2.connect(
+        dbname="VC postgres",   # change if needed
+        user="postgres",        # change if needed
+        password="postgrespv",  # change if needed
+        host="localhost",
+        port="5432"
+    )
+
+# ---------------- CRUD Functions ----------------
+def create_transaction(date_val, description, amount, type_val):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO transactions (transaction_id, transaction_date, description, amount, type) VALUES (%s, %s, %s, %s, %s)",
+        (str(uuid4()), date_val, description, amount, type_val)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def get_transactions(transaction_type=None, sort_by="transaction_date", sort_order="DESC"):
+    conn = get_connection()
+    query = "SELECT * FROM transactions"
+    params = []
+    
+    if transaction_type and transaction_type != "All":
+        query += " WHERE type = %s"
+        params.append(transaction_type)
+    
+    query += f" ORDER BY {sort_by} {sort_order}"
+    df = pd.read_sql(query, conn, params=params)
+    conn.close()
+    return df
+
+def update_transaction(transaction_id, date_val, description, amount, type_val):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE transactions SET transaction_date = %s, description = %s, amount = %s, type = %s WHERE transaction_id = %s",
+        (date_val, description, amount, type_val, transaction_id)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def delete_transaction(transaction_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM transactions WHERE transaction_id = %s", (transaction_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+# ---------------- Aggregates ----------------
+def get_aggregates():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM transactions")
+    total_transactions = cur.fetchone()[0]
+
+    cur.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'Revenue'")
+    total_revenue = cur.fetchone()[0]
+
+    cur.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'Expense'")
+    total_expenses = cur.fetchone()[0]
+
+    conn.close()
+
+    net_income = total_revenue - total_expenses
+    return total_transactions, total_revenue, total_expenses, net_income
